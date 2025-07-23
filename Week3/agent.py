@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 from collections import namedtuple
 import collections
@@ -25,7 +25,7 @@ class DQNAgent():
 	ts_frame = 0
 	ts = time.time()
 
-	Memory = namedtuple('Memory', ['obs', 'action', 'new_obs', 'reward', 'done'], verbose=False, rename=False)
+	Memory = namedtuple('Memory', ['obs', 'action', 'new_obs', 'reward', 'done'])
 
 	def __init__(self, env, device, hyperparameters, summary_writer=None):
 		'''

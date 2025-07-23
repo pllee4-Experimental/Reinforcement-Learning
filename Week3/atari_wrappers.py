@@ -1,8 +1,8 @@
 import numpy as np
 import os
 from collections import deque
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import cv2
 
 ''' 
@@ -46,14 +46,16 @@ class FireResetEnv(gym.Wrapper):
         assert len(env.unwrapped.get_action_meanings()) >= 3
 
     def reset(self, **kwargs):
-        self.env.reset(**kwargs)
-        obs, _, done, _ = self.env.step(1)
+        obs, info = self.env.reset(**kwargs)
+        obs, _, terminated, truncated, _ = self.env.step(1)
+        done = terminated or truncated
         if done:
-            self.env.reset(**kwargs)
-        obs, _, done, _ = self.env.step(2)
+            obs, info = self.env.reset(**kwargs)
+        obs, _, terminated, truncated, _ = self.env.step(2)
+        done = terminated or truncated
         if done:
-            self.env.reset(**kwargs)
-        return obs
+            obs, info = self.env.reset(**kwargs)
+        return obs, info
 
     def step(self, ac):
         return self.env.step(ac)
@@ -70,23 +72,24 @@ class MaxAndSkipEnv(gym.Wrapper):
     def step(self, action):
         """Repeat action, sum reward, and max over last observations."""
         total_reward = 0.0
-        done = None
+        terminated = False
+        truncated = False
+        info = {}
+        
         for i in range(self._skip):
-            obs, reward, done, info = self.env.step(action)
+            obs, reward, terminated, truncated, info = self.env.step(action)
             if i == self._skip - 2: self._obs_buffer[0] = obs
             if i == self._skip - 1: self._obs_buffer[1] = obs
             total_reward += reward
-            if done:
+            if terminated or truncated:
                 break
-        # Note that the observation on the done=True frame
-        # doesn't matter
+        
+        # Note that the observation on the done=True frame doesn't matter
         max_frame = self._obs_buffer.max(axis=0)
-
-        return max_frame, total_reward, done, info
+        return max_frame, total_reward, terminated, truncated, info
 
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
-
 
 
 class WarpFrame(gym.ObservationWrapper):
@@ -104,7 +107,6 @@ class WarpFrame(gym.ObservationWrapper):
         return frame[:, :, None]
 
 
-
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames.
@@ -119,16 +121,16 @@ class FrameStack(gym.Wrapper):
         shp = env.observation_space.shape
         self.observation_space = spaces.Box(low=0, high=255, shape=(shp[0], shp[1], shp[2] * k), dtype=env.observation_space.dtype)
 
-    def reset(self):
-        ob = self.env.reset()
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
         for _ in range(self.k):
-            self.frames.append(ob)
-        return self._get_ob()
+            self.frames.append(obs)
+        return self._get_ob(), info
 
     def step(self, action):
-        ob, reward, done, info = self.env.step(action)
-        self.frames.append(ob)
-        return self._get_ob(), reward, done, info
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        self.frames.append(obs)
+        return self._get_ob(), reward, terminated, truncated, info
 
     def _get_ob(self):
         assert len(self.frames) == self.k
@@ -145,7 +147,6 @@ class ImageToPyTorch(gym.ObservationWrapper):
         return np.moveaxis(observation, 2, 0)
 
 
-
 class ScaledFloatFrame(gym.ObservationWrapper):
     def __init__(self, env):
         gym.ObservationWrapper.__init__(self, env)
@@ -157,8 +158,8 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         return np.array(observation).astype(np.float32) / 255.0
 
 
-def make_env(env_name, fire=True):
-    env = gym.make(env_name)
+def make_env(env_name, fire=True, render_mode="rgb_array"):
+    env = gym.make(env_name, render_mode=render_mode)
     env = MaxAndSkipEnv(env) ## Return only every `skip`-th frame
     if fire:
        env = FireResetEnv(env) ## Fire at the beginning

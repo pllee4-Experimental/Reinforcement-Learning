@@ -1,5 +1,5 @@
 import numpy as np
-import gym
+import gymnasium as gym
 
 def test_game(env, agent, test_episodes):
 	reward_games = []
